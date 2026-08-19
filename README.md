@@ -620,16 +620,31 @@ A B1 ligada por USB aparece como **porta serial** — e o `niimprint` fala o mes
 
 ---
 
-## 🔗 Projeto irmão: de onde o CSV pode vir
+## 🔗 Projeto irmão
 
-Se o seu dado está num evento no **Lu.ma**, o [**`josevitorls/luma-etiquetas`**](https://github.com/josevitorls/luma-etiquetas) lista os convidados e exporta exatamente o CSV que este projeto consome:
+O [**`josevitorls/luma-etiquetas`**](https://github.com/josevitorls/luma-etiquetas) resolve o mesmo problema pelo outro caminho: ele entra na sua conta do **Lu.ma**, lista os convidados de um evento e gera os crachás **em PDF**, para você imprimir em qualquer impressora.
 
+|  | `luma-etiquetas` | `niimprint-b1` (aqui) |
+|---|---|---|
+| 📥 Entrada | sua conta Lu.ma | qualquer `.json` ou `.csv` |
+| 📤 Saída | PDF, uma página por etiqueta | impressão direta na B1 por USB |
+| 🖨️ Impressora | qualquer uma | Niimbot B1 |
+| 🔧 Stack | Node / TypeScript | Python |
+
+Os dois são **independentes** — este aqui não sabe nada sobre o Lu.ma. Para ligar um no outro, exporte a lista de convidados para um `.json` e aponte a CLI para ele:
+
+```ts
+import { LumaClient, loadSession, extractBadgeFields } from 'luma-etiquetas'
+import { writeFileSync } from 'node:fs'
+
+const luma = new LumaClient(loadSession()!.cookieString)
+const guests = await luma.getAllGuests('evt-XXXXXXXX')
+writeFileSync('convidados.json', JSON.stringify(guests.map(extractBadgeFields), null, 2))
 ```
-Lu.ma  ──▶  luma-etiquetas  ──▶  convidados.csv  ──▶  niimprint-b1  ──▶  🏷️ Niimbot B1
-             (Node/TypeScript)      name,company,title      (Python/USB)
-```
 
-O cabeçalho em inglês do export é reconhecido sem renomear nada — veja [os apelidos](#-como-o-dado-entra). Os dois projetos são independentes: qualquer `.csv` ou `.json` serve aqui, venha ele de onde vier.
+```bash
+py etiquetas.py print --in convidados.json --linha1 "{name}" --linha2 "{company} - {title}"
+```
 
 ---
 

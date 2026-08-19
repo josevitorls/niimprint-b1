@@ -232,7 +232,20 @@ Over USB the B1 shows up as a **serial port**, and `niimprint` speaks the same N
 
 ## 🔗 Sibling project
 
-If your data lives in a **Lu.ma** event, [**`josevitorls/luma-etiquetas`**](https://github.com/josevitorls/luma-etiquetas) lists the guests and exports exactly the CSV this project consumes. The two are independent: any `.csv` or `.json` works here.
+[**`josevitorls/luma-etiquetas`**](https://github.com/josevitorls/luma-etiquetas) solves the same problem from the other end: it signs into your **Lu.ma** account, lists an event's guests and generates the badges **as a PDF** for any printer.
+
+|  | `luma-etiquetas` | `niimprint-b1` (here) |
+|---|---|---|
+| 📥 Input | your Lu.ma account | any `.json` or `.csv` |
+| 📤 Output | PDF, one page per label | direct print on the B1 over USB |
+| 🖨️ Printer | any | Niimbot B1 |
+| 🔧 Stack | Node / TypeScript | Python |
+
+They are **independent** — this project knows nothing about Lu.ma. To bridge them, dump the guest list to a `.json` (`guests.map(extractBadgeFields)`) and point the CLI at it:
+
+```bash
+py etiquetas.py print --in guests.json --linha1 "{name}" --linha2 "{company} - {title}"
+```
 
 ---
 
