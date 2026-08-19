@@ -52,6 +52,14 @@ serial nem precisa da impressora ligada:
 py testes.py
 ```
 
+Antes de um evento, ou depois de mexer no driver, vale rodar tambem a suite com
+a impressora ligada -- ela prova que a B1 para quando um comando falha, em vez de
+puxar papel em branco. Gasta ~6 etiquetas e pergunta antes:
+
+```
+py testes_hardware.py
+```
+
 ## Fluxo normal
 
 1. **Descubra as colunas do arquivo de entrada** antes de montar os templates. Leia
@@ -157,6 +165,7 @@ sao fatos fisicos da B1 e nao se mexem. Em etiqueta curta, baixar
 | `calibra.py` | cartao de calibracao com reguas em mm |
 | `diag.py` | diagnostico da porta serial |
 | `testes.py` | suite sem impressora (`py testes.py`) -- roda tambem na CI |
+| `testes_hardware.py` | suite com a B1 ligada; gasta ~6 etiquetas, fora da CI |
 | `niimbot/` | o driver corrigido -- **e este que roda** |
 | `niimprint/` | o driver do upstream, intocado, so para diff. Nao importar |
 

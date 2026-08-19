@@ -181,6 +181,20 @@ No printer, no serial port, no extra dependency — CI-friendly. A fake printer 
 
 It covers: the job always closing even when a command fails, the queue surviving a bad label and printing the next one, `get_rfid()` decoding the B1's real 49-byte reply, `port="auto"` finding the printer past a legacy `COM1`, and the rendered image matching the print head. The suite has eight test cases and **six of them fail** on the pre-fix version — that is how they were written. The other two (the happy path in `TrabalhoSempreFecha` and `Geometria`) are regression guards: they passed before the fix and must keep passing.
 
+### 🖨️ Tests with the printer plugged in
+
+```bash
+py testes_hardware.py
+```
+
+Two things a fake printer cannot prove, because both depend on paper actually moving: that the queue prints **in order, one job at a time**, and that the B1 **stops** when a command fails mid-job instead of feeding blank paper until someone kills the power.
+
+The second one is the bug this fork exists for. Waiting for it to happen on its own is not practical, so the script provokes it: it really sends `set_dimension` and swallows the reply in the transport, exactly as if the printer had gone silent. Then it prints one more label to prove the queue survived.
+
+It burns ~6 labels, shows which roll is loaded and asks before printing — which is why it stays **out** of CI. Run it after touching the driver and before taking the printer to an event. Options: `--porta COM3`, `--so-fila` (skip the destructive half), `--sim` (no prompt).
+
+> ✅ **Verified** on a B1 (firmware 13.06) with a 50 × 80 roll: three badges in 19.6 s, the broken label failed with `PrinterSilent`, **the printer stayed put**, and the next label printed normally.
+
 ---
 
 ## ⏱️ The `--rowdelay` pacing

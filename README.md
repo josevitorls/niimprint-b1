@@ -202,6 +202,9 @@ niimprint-b1/
 ├── calibra.py             📐 Cartão de calibração com réguas em mm nos 2 eixos
 ├── diag.py                🩺 Diagnóstico da porta serial
 │
+├── testes.py              🧪 Suíte sem impressora — roda na CI
+├── testes_hardware.py     🖨️ Testes com a B1 ligada (gastam etiqueta)
+│
 ├── niimbot/               🔧 O DRIVER CORRIGIDO — é este que roda
 │   ├── printer.py            PrinterClient, SerialTransport, print_image,
 │   │                         wait_until_done (as 7 correções vivem aqui)
@@ -468,6 +471,26 @@ Roda **sem impressora**, sem porta serial e sem dependência nova — serve em C
 | `Geometria` | a imagem enviada tem exatamente o tamanho da cabeça |
 
 As 5 classes acima somam 8 casos de teste, e **6 deles falham** na versão anterior à correção — foi assim que foram escritos. Os outros dois (o caminho feliz de `TrabalhoSempreFecha` e o `Geometria`) são guardas de regressão: já passavam antes e têm de continuar passando.
+
+### 🖨️ Testes com a impressora ligada
+
+```bash
+py testes_hardware.py
+```
+
+Duas coisas não dá para provar com impressora de mentira, porque as duas dependem do papel andando: que a fila imprime **na ordem, uma etiqueta por vez**, e que a B1 **para** quando um comando falha no meio — em vez de sair puxando papel em branco até alguém desligar no botão.
+
+O segundo é o defeito que originou este fork. Esperar ele acontecer sozinho é inviável, então o script o provoca: manda o `set_dimension` de verdade e engole a resposta no transporte, exatamente como se a impressora tivesse ficado muda. Depois imprime mais uma etiqueta, para provar que a fila sobreviveu.
+
+Gasta ~6 etiquetas, mostra qual rolo está montado e pergunta antes de imprimir. É por isso que ele **não** entra na CI — rode depois de mexer no driver e antes de levar a impressora para um evento.
+
+| Opção | |
+|---|---|
+| `--porta COM3` | se o `auto` não achar a impressora |
+| `--so-fila` | pula o teste destrutivo (gasta 3 em vez de 6) |
+| `--sim` | não pergunta, para uso em script |
+
+> ✅ **Verificado** na B1 (firmware 13.06) com rolo de 50 × 80: três crachás em 19,6 s (6,5 s cada, `row_delay` 0,005), a etiqueta quebrada falhou com `PrinterSilent: sem resposta a set_dimension (req 0x13) apos 6 tentativas`, **a impressora ficou parada** e a seguinte saiu normalmente.
 
 ---
 
