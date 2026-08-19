@@ -136,3 +136,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# saida gerada por "py etiquetas.py preview"
+preview/
