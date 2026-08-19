@@ -37,7 +37,7 @@ It does three things:
 
 1. 🏷️ **Draws and prints a two-line centered label** — headline on top, supporting line below. Font size is picked automatically and text wraps to two lines when needed, never crossing the margin that protects it from the cut.
 2. 📋 **Queues the jobs** — the caller gets control back immediately, and the B1 receives one complete job at a time, starting the next only when the **printer** confirms the paper has stopped.
-3. 🔧 **Fixes the driver** — upstream `niimprint` does not work on the B1 over USB. The [4 fixes](README.md#-as-4-correções-que-fazem-a-b1-funcionar) that make it work are the expensive part.
+3. 🔧 **Fixes the driver** — upstream `niimprint` does not work on the B1 over USB. The [7 fixes](README.md#-as-7-correções-que-fazem-a-b1-funcionar) that make it work are the expensive part.
 
 **All you need to understand is [how the data goes in](#-how-the-data-goes-in).** Everything else is the same for any content.
 
@@ -179,7 +179,7 @@ py testes.py
 
 No printer, no serial port, no extra dependency — CI-friendly. A fake printer speaks the B1 protocol and **can go silent on command**, which is exactly the scenario that is expensive to reproduce on hardware.
 
-It covers: the job always closing even when a command fails, the queue surviving a bad label and printing the next one, `get_rfid()` decoding the B1's real 49-byte reply, `port="auto"` finding the printer past a legacy `COM1`, and the rendered image matching the print head. **Six of the eight fail** on the pre-fix version — that is how they were written. The other two (the happy path in `TrabalhoSempreFecha` and `Geometria`) are regression guards: they passed before the fix and must keep passing.
+It covers: the job always closing even when a command fails, the queue surviving a bad label and printing the next one, `get_rfid()` decoding the B1's real 49-byte reply, `port="auto"` finding the printer past a legacy `COM1`, and the rendered image matching the print head. The suite has eight test cases and **six of them fail** on the pre-fix version — that is how they were written. The other two (the happy path in `TrabalhoSempreFecha` and `Geometria`) are regression guards: they passed before the fix and must keep passing.
 
 ---
 
@@ -273,7 +273,7 @@ py etiquetas.py print --in guests.json --linha1 "{name}" --linha2 "{company} - {
 | | Who | What |
 |:---:|---|---|
 | 👤 | **[José Vitor Lopes](https://github.com/josevitorls)** | Author and maintainer of this fork. Defined the problem, provided the hardware, diagnosed the failures on real prints and made the engineering calls — including the cautious `row_delay` and the one-job-at-a-time queue |
-| 🤖 | **[Claude Opus 5](https://claude.com/claude-code)** (via Claude Code) | Co-author. Reverse-engineering of the B1's behaviour, the 4 driver fixes, calibration, queue, timing panel and documentation |
+| 🤖 | **[Claude Opus 5](https://claude.com/claude-code)** (via Claude Code) | Co-author. Reverse-engineering of the B1's behaviour, the 7 driver fixes, calibration, queue, timing panel and documentation |
 | 🍴 | **[AndBondStyle](https://github.com/AndBondStyle)** | Author of the [`niimprint`](https://github.com/AndBondStyle/niimprint) this forks from |
 | 🧬 | **[kjy00302](https://github.com/kjy00302)** | Author of the original [`niimprint`](https://github.com/kjy00302/niimprint) and of the Niimbot protocol implementation |
 | 📡 | **[niim.blue](https://printers.niim.blue/)** | Community protocol documentation |

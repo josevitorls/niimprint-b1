@@ -41,7 +41,7 @@ Ele faz três coisas:
 
 1. 🏷️ **Desenha e imprime uma etiqueta de duas linhas centralizadas** — a de cima em destaque, a de baixo menor. O corpo da fonte é escolhido automaticamente e o texto quebra em duas linhas se precisar, sem nunca invadir a margem que protege do corte.
 2. 📋 **Enfileira as impressões** — quem opera devolve o controle na hora, e a B1 recebe um trabalho completo por vez, só começando o próximo quando a **impressora** confirma que o papel parou.
-3. 🔧 **Conserta o driver** — o `niimprint` original não funciona na B1 por USB. As [4 correções](#-as-4-correções-que-fazem-a-b1-funcionar) que fazem funcionar são a parte que custou caro para descobrir.
+3. 🔧 **Conserta o driver** — o `niimprint` original não funciona na B1 por USB. As [7 correções](#-as-7-correções-que-fazem-a-b1-funcionar) que fazem funcionar são a parte que custou caro para descobrir.
 
 ```mermaid
 flowchart LR
@@ -204,7 +204,7 @@ niimprint-b1/
 │
 ├── niimbot/               🔧 O DRIVER CORRIGIDO — é este que roda
 │   ├── printer.py            PrinterClient, SerialTransport, print_image,
-│   │                         wait_until_done (as 4 correções vivem aqui)
+│   │                         wait_until_done (as 7 correções vivem aqui)
 │   └── packet.py             framing 55 55 <tipo> <len> <dados> <xor> aa aa
 │
 ├── niimprint/             📚 O driver do upstream, INTOCADO, para diff
@@ -225,7 +225,7 @@ niimprint-b1/
                               Não são exemplos de código deste projeto
 ```
 
-> 🧭 **Por que dois drivers?** `niimprint/` é o código do projeto-base, preservado exatamente como veio — é o que faz disto um *fork* de verdade e permite ver o diff. `niimbot/` é a cópia com as correções que fazem a B1 funcionar por USB, e é a que os scripts importam. As correções estão detalhadas [logo abaixo](#-as-4-correções-que-fazem-a-b1-funcionar).
+> 🧭 **Por que dois drivers?** `niimprint/` é o código do projeto-base, preservado exatamente como veio — é o que faz disto um *fork* de verdade e permite ver o diff. `niimbot/` é a cópia com as correções que fazem a B1 funcionar por USB, e é a que os scripts importam. As correções estão detalhadas [logo abaixo](#-as-7-correções-que-fazem-a-b1-funcionar).
 
 ---
 
@@ -459,7 +459,7 @@ py testes.py
 
 Roda **sem impressora**, sem porta serial e sem dependência nova — serve em CI. Uma impressora de mentira responde o protocolo da B1 e **pode ficar muda sob comando**, que é justamente o cenário caro de reproduzir no hardware.
 
-| Teste | Garante |
+| Classe de teste | Garante |
 |---|---|
 | `TrabalhoSempreFecha` | `end_print()` roda mesmo com um comando falhando no meio — o defeito que fazia a B1 puxar papel sem parar |
 | `FilaSeRecupera` | uma etiqueta ruim não derruba a fila: a **próxima sai** |
@@ -467,7 +467,7 @@ Roda **sem impressora**, sem porta serial e sem dependência nova — serve em C
 | `PortaAutomatica` | `port="auto"` acha a impressora mesmo com uma `COM1` legada no caminho |
 | `Geometria` | a imagem enviada tem exatamente o tamanho da cabeça |
 
-**6 dos 8 testes falham** na versão anterior à correção — foi assim que foram escritos. Os outros dois (o caminho feliz de `TrabalhoSempreFecha` e o `Geometria`) são guardas de regressão: já passavam antes e têm de continuar passando.
+As 5 classes acima somam 8 casos de teste, e **6 deles falham** na versão anterior à correção — foi assim que foram escritos. Os outros dois (o caminho feliz de `TrabalhoSempreFecha` e o `Geometria`) são guardas de regressão: já passavam antes e têm de continuar passando.
 
 ---
 
