@@ -45,6 +45,13 @@ necessarios. As unicas dependencias sao:
 py -m pip install pillow pyserial
 ```
 
+**5. Se mexer no driver, rode a suite antes de gastar etiqueta.** Ela nao abre porta
+serial nem precisa da impressora ligada:
+
+```
+py testes.py
+```
+
 ## Fluxo normal
 
 1. **Descubra as colunas do arquivo de entrada** antes de montar os templates. Leia
@@ -105,6 +112,14 @@ Peca ao usuario para conferir a tampa e o rolo e, se persistir, **desligar e lig
 a impressora**. Atencao: comandos de leitura (`info`) continuam respondendo nesse
 estado, entao "a impressora responde" nao quer dizer que ela vai imprimir.
 
+**`PrinterSilent` nao deixa mais a impressora desgovernada.** A excecao
+`PrinterSilent: sem resposta a <comando> (req 0xNN) apos 6 tentativas` significa que
+a B1 recebeu o comando e nao respondeu. O trabalho e fechado sozinho (`end_print()`
+roda no `finally`), entao **nao sai papel em branco sem parar** -- a etiqueta
+simplesmente nao sai. Na fila, o erro chega no callback `ao_terminar` e a proxima
+etiqueta segue normalmente; basta reimprimir a que falhou. Se repetir sempre no
+mesmo comando, vale abrir issue com o nome do comando e o firmware.
+
 **Nao mate o processo durante uma impressao.** Isso deixa a impressora no estado
 acima. Use `fila.encerrar()`, que espera o que falta.
 
@@ -116,6 +131,7 @@ de proposito: quem sabe quando a etiqueta acabou e a impressora, via
 
 | Sintoma | Causa | Acao |
 |---|---|---|
+| nao para de sair etiqueta em branco | um trabalho ficou aberto na impressora | **desligar e ligar a B1**; era defeito do driver, corrigido, entao reportar se voltar |
 | `could not open port` / acesso negado | o app da Niimbot esta segurando a porta | fechar o app, inclusive o icone da bandeja |
 | imprime so os primeiros milimetros | `row_delay` baixo demais | subir para `0.02` para confirmar, depois calibrar |
 | etiqueta totalmente em branco | tipo de rolo errado | deixar o driver perguntar o `LABELTYPE` a impressora; nao forcar |
@@ -140,8 +156,9 @@ sao fatos fisicos da B1 e nao se mexem. Em etiqueta curta, baixar
 | `painel.py` | pagina local com cronometro e troca de `row_delay` a quente |
 | `calibra.py` | cartao de calibracao com reguas em mm |
 | `diag.py` | diagnostico da porta serial |
+| `testes.py` | suite sem impressora (`py testes.py`) -- roda tambem na CI |
 | `niimbot/` | o driver corrigido -- **e este que roda** |
 | `niimprint/` | o driver do upstream, intocado, so para diff. Nao importar |
 
-Detalhes das 4 correcoes do driver, medicoes de tempo e referencia completa da API
+Detalhes das correcoes do driver, medicoes de tempo e referencia completa da API
 estao no `README.md`.

@@ -13,6 +13,7 @@
 [![Windows](https://img.shields.io/badge/Windows-11-0078D6?style=for-the-badge&logo=windows11&logoColor=white)](#-o-que-você-precisa)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](#-o-que-você-precisa)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
+[![Testes](https://img.shields.io/github/actions/workflow/status/josevitorls/niimprint-b1/testes.yml?style=for-the-badge&label=testes&logo=github&logoColor=white)](https://github.com/josevitorls/niimprint-b1/actions/workflows/testes.yml)
 
 [![Bluetooth](https://img.shields.io/badge/Bluetooth-não%20usado-9CA3AF?style=flat-square&logo=bluetooth&logoColor=white)](#-por-que-não-bluetooth-e-por-que-não-o-niimprintx)
 [![Fork de](https://img.shields.io/badge/fork%20de-AndBondStyle%2Fniimprint-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/AndBondStyle/niimprint)
@@ -368,7 +369,7 @@ A skill ensina o agente a testar a conexão antes de imprimir, a nunca chutar a 
 
 ---
 
-## 🩹 As 4 correções que fazem a B1 funcionar
+## 🩹 As 7 correções que fazem a B1 funcionar
 
 Esta é a parte que custou caro para descobrir e que sustenta todo o resto. Cada item é uma diferença real entre `niimprint/` (upstream) e `niimbot/` (o que roda aqui).
 
@@ -416,6 +417,57 @@ O upstream lia a resposta com `read(1024)` numa serial com `timeout=0.5`. O pyse
 ### 4️⃣ O `_recv()` que girava para sempre
 
 Com respostas parciais passando a ser comuns, apareceu um laço infinito que estava no upstream desde sempre: se o buffer tinha um pacote pela metade, o `while` não saía nunca (não havia `break`) e o processo travava em **100% de CPU**. Corrigido com um `break` quando o pacote ainda está incompleto.
+
+### 5️⃣ O trabalho ficava aberto quando um comando falhava
+
+Este apareceu na bancada da pior forma possível: **a impressora não parava de puxar etiqueta em branco**, e só parou no botão de desligar.
+
+`print_image()` só chamava `end_print()` no caminho feliz. Qualquer exceção no meio deixava a B1 com a página **aberta** — e a fila, que engole o erro para não morrer junto, mandava o trabalho seguinte por cima. Cada `start_print()` novo empilhava no anterior.
+
+Agora o trabalho inteiro está num `try/finally`: **`end_print()` sempre roda**, com erro ou sem. Vale para a fila, para a CLI e para quem chama `print_image()` direto.
+
+### 6️⃣ Comando mudo virava `AttributeError` sem contexto
+
+O gatilho do item anterior. `_transceive()` desiste depois de 6 tentativas e devolve `None` — e os comandos de controle faziam `bool(packet.data[0])` direto em cima disso:
+
+```
+AttributeError: 'NoneType' object has no attribute 'data'
+```
+
+Não dizia sequer qual comando tinha ficado mudo. Agora existe `PrinterSilent`, que nomeia:
+
+```
+PrinterSilent: sem resposta a set_dimension (req 0x13) apos 6 tentativas
+```
+
+> ⚠️ **Isto trata o amplificador, não a causa.** *Por que* a B1 ficou muda naquela vez continua sem resposta. O que mudou é que agora ela falha alto, com nome, e sem deixar o trabalho aberto.
+
+### 7️⃣ `port="auto"` e `get_rfid()` nunca funcionaram
+
+Dois defeitos do upstream que passavam batido porque quase ninguém chegava neles:
+
+- **`port="auto"`** desistia assim que existisse **mais de uma** porta serial. Quase todo Windows tem uma `COM1` legada de ACPI, então na prática ele nunca funcionava — a promessa do README era falsa. Agora filtra pelo VID `0x3513` da Niimbot e só reclama se sobrar ambiguidade de verdade.
+- **`get_rfid()`** estourava `unpack requires a buffer of 5 bytes` **sempre** na B1: ela manda 15 bytes depois do serial, não 5. Agora lê só os 5 que interessam e devolve código do produto, série do rolo, contagem e tipo.
+
+---
+
+## 🧪 Testes
+
+```bash
+py testes.py
+```
+
+Roda **sem impressora**, sem porta serial e sem dependência nova — serve em CI. Uma impressora de mentira responde o protocolo da B1 e **pode ficar muda sob comando**, que é justamente o cenário caro de reproduzir no hardware.
+
+| Teste | Garante |
+|---|---|
+| `TrabalhoSempreFecha` | `end_print()` roda mesmo com um comando falhando no meio — o defeito que fazia a B1 puxar papel sem parar |
+| `FilaSeRecupera` | uma etiqueta ruim não derruba a fila: a **próxima sai** |
+| `LeituraDoRolo` | `get_rfid()` decodifica a resposta real de 49 bytes da B1 |
+| `PortaAutomatica` | `port="auto"` acha a impressora mesmo com uma `COM1` legada no caminho |
+| `Geometria` | a imagem enviada tem exatamente o tamanho da cabeça |
+
+**6 dos 8 testes falham** na versão anterior à correção — foi assim que foram escritos. Os outros dois (o caminho feliz de `TrabalhoSempreFecha` e o `Geometria`) são guardas de regressão: já passavam antes e têm de continuar passando.
 
 ---
 
@@ -543,6 +595,8 @@ LABEL_MM = (50, 80)          # (largura do rolo, comprimento da etiqueta) em mm
 
 O **tipo de rolo** não é constante nenhuma: o driver pergunta à impressora qual rolo ela detectou (`LABELTYPE`) e usa a resposta. Forçar o tipo errado faz sair em branco.
 
+> 💡 **E o RFID do rolo?** A B1 expõe (`get_rfid()`) o código do produto, o número de série daquele rolo, a contagem de etiquetas e o tipo. O que ele **não** traz é a dimensão em milímetros — não dá para deduzir `(40, 30)` de `(50, 80)` a partir dele sem uma tabela de produtos, que este projeto não tem. Então `LABEL_MM` continua sendo decisão sua. O que dá para fazer sem tabela nenhuma é **detectar que o rolo mudou**: o `serial` é único por rolo, então guardar o último visto e comparar avisa antes de você imprimir 50 × 80 num rolo de 40 × 30.
+
 Depois de trocar `LABEL_MM`, o roteiro é:
 
 ```bash
@@ -560,6 +614,22 @@ Se o texto encostar no corte, suba `MARGEM_PAPEL_MM`. Se sobrar papel em branco 
 ## 🆘 Problemas comuns
 
 <details>
+<summary>🌀 <b>Não para de sair etiqueta em branco</b></summary>
+
+Um trabalho ficou **aberto** na impressora. Para interromper: **desligue e ligue a B1**.
+
+Isto era um defeito do driver (veja a [correção 5](#-as-7-correções-que-fazem-a-b1-funcionar)) e não deve mais acontecer — `end_print()` agora roda mesmo quando o trabalho falha no meio. Se acontecer de novo, é caso de [issue](https://github.com/josevitorls/niimprint-b1/issues): conte o que apareceu no terminal.
+</details>
+
+<details>
+<summary>🔇 <b><code>PrinterSilent: sem resposta a &lt;comando&gt;</code></b></summary>
+
+A impressora recebeu o comando e não respondeu em 6 tentativas. O trabalho é fechado automaticamente, então **não sai papel sem parar** — a etiqueta simplesmente não sai.
+
+Na fila, o erro chega no callback `ao_terminar` e a **próxima etiqueta segue normalmente**. Reimprima a que falhou. Se repetir sempre no mesmo comando, abra uma issue com o nome do comando e o firmware (`py etiquetas.py info`).
+</details>
+
+<details>
 <summary>🚫 <b><code>could not open port COM3</code> / acesso negado</b></summary>
 
 O app da Niimbot (ou o driver dele) está segurando a porta. **Feche o app**, incluindo o ícone da bandeja.
@@ -574,7 +644,7 @@ A porta pode mudar de USB. Para descobrir:
 py -c "from serial.tools.list_ports import comports; [print(p.device, p.description) for p in comports()]"
 ```
 
-Ou use `SerialTransport(port="auto")`, que procura sozinho.
+Ou use `SerialTransport(port="auto")`, que procura sozinho — ele filtra pelo VID `0x3513` da Niimbot e ignora portas seriais que não são a impressora.
 </details>
 
 <details>
@@ -678,7 +748,7 @@ Framing: `0x55 0x55 <tipo> <len> <dados> <xor> 0xAA 0xAA`
 | | Quem | O quê |
 |:---:|---|---|
 | 👤 | **[José Vitor Lopes](https://github.com/josevitorls)** | Autor e mantenedor deste fork. Definiu o problema, forneceu o hardware, diagnosticou as falhas nas impressões reais e decidiu as escolhas de engenharia — inclusive o `row_delay` cauteloso e a fila unitária |
-| 🤖 | **[Claude Opus 5](https://claude.com/claude-code)** (via Claude Code) | Coautor. Engenharia reversa do comportamento da B1, as 4 correções do driver, calibração, fila, painel de tempo e documentação |
+| 🤖 | **[Claude Opus 5](https://claude.com/claude-code)** (via Claude Code) | Coautor. Engenharia reversa do comportamento da B1, as correções do driver, calibração, fila, painel de tempo e documentação |
 | 🍴 | **[AndBondStyle](https://github.com/AndBondStyle)** | Autor do [`niimprint`](https://github.com/AndBondStyle/niimprint) que serviu de base a este fork |
 | 🧬 | **[kjy00302](https://github.com/kjy00302)** | Autor do [`niimprint`](https://github.com/kjy00302/niimprint) original e da implementação do protocolo Niimbot |
 | 📡 | **[niim.blue](https://printers.niim.blue/)** | Documentação comunitária do protocolo |

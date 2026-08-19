@@ -1,0 +1,27 @@
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    # Roda no Windows de proposito: o desenho da etiqueta usa as fontes Segoe UI
+    # de C:\Windows\Fonts. Em Linux o job falharia por falta de fonte, e nao por
+    # defeito no codigo -- o que seria um sinal falso.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Dependencias
+        run: python -m pip install pillow pyserial
+
+      - name: Testes
+        run: python testes.py

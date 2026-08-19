@@ -13,6 +13,7 @@
 [![Windows](https://img.shields.io/badge/Windows-11-0078D6?style=for-the-badge&logo=windows11&logoColor=white)](#-requirements)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](#-requirements)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/josevitorls/niimprint-b1/testes.yml?style=for-the-badge&label=tests&logo=github&logoColor=white)](https://github.com/josevitorls/niimprint-b1/actions/workflows/testes.yml)
 
 <br>
 
@@ -144,7 +145,7 @@ from etiquetas import render_label, render_cracha, to_print, load_registros, for
 ### The driver directly
 
 ```python
-from niimbot import PrinterClient, SerialTransport, PrinterBusy
+from niimbot import PrinterClient, SerialTransport, PrinterBusy, PrinterSilent
 
 pr = PrinterClient(SerialTransport(port="COM3"))   # open ONCE, keep it alive
 r  = pr.print_image(to_print(render_label("PAT-004821", "IT"), "landscape"),
@@ -164,6 +165,21 @@ r  = pr.print_image(to_print(render_label("PAT-004821", "IT"), "landscape"),
 
 - `completa=False` with `status["ok"]=True` → the B1 dropped rows: raise `row_delay`.
 - `PrinterBusy` → the printer **refused** the command. Retrying will not help; power-cycle it.
+- `PrinterSilent` → a command got no answer after 6 tries. The job is closed automatically, so the printer will **not** run away feeding blank paper. In the queue, the next label still prints.
+
+> 🌀 **If the B1 ever feeds blank labels non-stop, power-cycle it.** That was a driver bug: `print_image()` only closed the job on the happy path, so any mid-job failure left the page open. It is now wrapped in `try/finally` — `end_print()` always runs.
+
+---
+
+## 🧪 Tests
+
+```bash
+py testes.py
+```
+
+No printer, no serial port, no extra dependency — CI-friendly. A fake printer speaks the B1 protocol and **can go silent on command**, which is exactly the scenario that is expensive to reproduce on hardware.
+
+It covers: the job always closing even when a command fails, the queue surviving a bad label and printing the next one, `get_rfid()` decoding the B1's real 49-byte reply, `port="auto"` finding the printer past a legacy `COM1`, and the rendered image matching the print head. **Six of the eight fail** on the pre-fix version — that is how they were written. The other two (the happy path in `TrabalhoSempreFecha` and `Geometria`) are regression guards: they passed before the fix and must keep passing.
 
 ---
 
@@ -202,6 +218,8 @@ LABEL_MM = (50, 80)          # (roll width, label length) in mm
 ```
 
 `DPI = 203` and `HEAD_PX = 384` are physical facts about the B1 — do not touch them. `MARGEM_PAPEL_MM = 6.0` is the margin protecting the text from the cut; on a short label, drop it to ~3 mm and calibrate with `py calibra.py --print --delay=0.005`. The roll **type** is not a constant: the driver asks the printer which roll it detected.
+
+> 💡 **What about the roll's RFID?** `get_rfid()` gives you the product code, that roll's serial, the label count and the type — but **not** the millimetres. You cannot tell `(40, 30)` from `(50, 80)` without a product table, which this project does not ship. So `LABEL_MM` stays your call. What does work with no table at all is **detecting that the roll changed**: the `serial` is unique per roll, so storing the last one seen warns you before you print 50 × 80 on a 40 × 30 roll.
 
 > ⚠️ On a roll **wider than 48 mm**, the head cannot reach the edge. That is a physical limit of the B1, not of this code.
 
