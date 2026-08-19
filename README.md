@@ -98,6 +98,12 @@ py etiquetas.py print
 py -m pip install pillow pyserial
 ```
 
+> ⚠️ **Não use `requirements.txt` nem `poetry install`.** Esses dois arquivos são do
+> upstream e pertencem ao `niimprint/`: eles fixam `pillow==10.1.0`, exigem `click` e
+> travam `python = "~3.11"` — ou seja, **não instalam no 3.13**. Foi exatamente por
+> isso que o driver foi vendorizado em `niimbot/`. A solução da B1 precisa só de
+> `pillow` + `pyserial`, em qualquer versão recente.
+
 ### 🗂️ O que tem neste repositório
 
 | Arquivo | 🎬 |
@@ -109,6 +115,7 @@ py -m pip install pillow pyserial
 | `diag.py` | 🩺 Diagnóstico da porta serial |
 | `niimbot/` | 🔧 **O driver corrigido** — é este que roda |
 | `niimprint/` | 📚 O driver original do upstream, intocado, para referência/diff |
+| `requirements.txt` `pyproject.toml` | 📚 Do upstream, para o `niimprint/` — [não use](#-o-que-você-precisa) |
 
 > 🧭 **Por que dois drivers?** `niimprint/` é o código do projeto-base, preservado exatamente como veio — é o que faz disto um *fork* de verdade e permite ver o diff. `niimbot/` é a cópia com as correções que fazem a B1 funcionar de verdade por USB, e é a que os scripts importam. As correções estão detalhadas [logo abaixo](#-as-4-correções-que-fazem-a-b1-funcionar).
 
