@@ -62,6 +62,16 @@ def _packet_to_int(x):
     return int.from_bytes(x.data, "big")
 
 
+class PrinterSilent(RuntimeError):
+    """A impressora recebeu o comando e nao respondeu nada.
+
+    _transceive desiste depois de 6 tentativas e devolve None. O niimprint
+    original fazia bool(packet.data[0]) direto em cima disso, e o None virava
+    um AttributeError sem contexto -- no meio de um trabalho aberto, o erro
+    que chegava ao usuario nao dizia qual comando tinha ficado mudo.
+    """
+
+
 class BaseTransport(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def read(self, length: int) -> bytes:
@@ -93,16 +103,30 @@ class SerialTransport(BaseTransport):
         port = port if port != "auto" else self._detect_port()
         self._serial = serial.Serial(port=port, baudrate=115200, timeout=0.5)
 
+    # A B1 se apresenta no Windows como USB serial nativo com VID 0x3513.
+    VID_NIIMBOT = 0x3513
+
     def _detect_port(self):
-        all_ports = list(list_comports())
-        if len(all_ports) == 0:
-            raise RuntimeError("No serial ports detected")
-        if len(all_ports) > 1:
-            msg = "Too many serial ports, please select specific one:"
-            for port, desc, hwid in all_ports:
-                msg += f"\n- {port} : {desc} [{hwid}]"
-            raise RuntimeError(msg)
-        return all_ports[0][0]
+        """Acha a impressora sozinho, ignorando portas que nao sao dela.
+
+        O niimprint original desistia assim que existisse mais de uma porta
+        serial -- e quase toda maquina Windows tem uma COM1 legada de ACPI que
+        nunca vai ser uma impressora. Na pratica o "auto" nunca funcionava.
+        Filtrar pelo VID resolve o caso comum; se ainda sobrar ambiguidade, o
+        erro lista as candidatas para voce escolher.
+        """
+        todas = list(list_comports())
+        if not todas:
+            raise RuntimeError("Nenhuma porta serial encontrada.")
+        candidatas = [p for p in todas
+                      if getattr(p, "vid", None) == self.VID_NIIMBOT] or todas
+        if len(candidatas) == 1:
+            return candidatas[0].device
+        msg = ("Mais de uma porta candidata. Passe a porta explicitamente, "
+               "por exemplo SerialTransport(port=\"COM3\"):")
+        for p in candidatas:
+            msg += "\n- %s : %s [%s]" % (p.device, p.description, p.hwid)
+        raise RuntimeError(msg)
 
     def read(self, length: int) -> bytes:
         """Le uma resposta sem pagar o timeout inteiro.
@@ -234,54 +258,67 @@ class PrinterClient:
         self.set_label_density(density)
         self.set_label_type(label_type)
         self.start_print()
-        self.start_page_print()
-        self.set_dimension(image.height, image.width)
-        self.set_quantity(1)  # aceito pela B1 (firmware 13.06)
+        encerrado = False
+        try:
+            self.start_page_print()
+            self.set_dimension(image.height, image.width)
+            self.set_quantity(1)  # aceito pela B1 (firmware 13.06)
 
-        self.chatter = []
-        progresso = bytearray()
-        read_avail = getattr(self._transport, "read_available", None)
-        t_papel = None
-        for i, pkt in enumerate(self._encode_image(image)):
-            self._send(pkt)
-            if t_papel is None:
-                # A B1 imprime conforme as linhas chegam: quando a primeira linha
-                # entra no fio, o papel ja comecou a andar.
-                t_papel = time.monotonic()
-            if row_delay:
-                time.sleep(row_delay)
+            self.chatter = []
+            progresso = bytearray()
+            read_avail = getattr(self._transport, "read_available", None)
+            t_papel = None
+            for i, pkt in enumerate(self._encode_image(image)):
+                self._send(pkt)
+                if t_papel is None:
+                    # A B1 imprime conforme as linhas chegam: quando a primeira linha
+                    # entra no fio, o papel ja comecou a andar.
+                    t_papel = time.monotonic()
+                if row_delay:
+                    time.sleep(row_delay)
+                if read_avail:
+                    extra = read_avail()
+                    if extra:
+                        progresso.extend(extra)
+                        if sniff:
+                            self.chatter.append((0, i, extra.hex()))
+            t_envio_fim = time.monotonic()
+            self.end_page_print()
             if read_avail:
-                extra = read_avail()
-                if extra:
-                    progresso.extend(extra)
-                    if sniff:
-                        self.chatter.append((0, i, extra.hex()))
-        t_envio_fim = time.monotonic()
-        self.end_page_print()
-        if read_avail:
-            progresso.extend(read_avail())
+                progresso.extend(read_avail())
 
-        status = self.wait_until_done(timeout=timeout)
-        t_fim = time.monotonic()
-        self.end_print()
+            status = self.wait_until_done(timeout=timeout)
+            t_fim = time.monotonic()
+            self.end_print()
+            encerrado = True
 
-        self.last_ack = self._last_progress_row(progresso)
-        esperado = image.height - 1
-        return {"linhas_ok": self.last_ack,
-                "esperado": esperado,
-                "completa": bool(status.get("ok")) and (
-                    self.last_ack is None or self.last_ack >= esperado),
-                "status": status,
-                "tempos": {
-                    # papel: do inicio do trabalho ate a primeira linha sair --
-                    #        e quando a etiqueta comeca a se mexer.
-                    # envio: as 639 linhas, no ritmo do row_delay.
-                    # espera: do fim do envio ate a impressora confirmar o fim.
-                    "papel": (t_papel or t_inicio) - t_inicio,
-                    "envio": t_envio_fim - (t_papel or t_inicio),
-                    "espera": t_fim - t_envio_fim,
-                    "total": t_fim - t_inicio,
-                }}
+            self.last_ack = self._last_progress_row(progresso)
+            esperado = image.height - 1
+            return {"linhas_ok": self.last_ack,
+                    "esperado": esperado,
+                    "completa": bool(status.get("ok")) and (
+                        self.last_ack is None or self.last_ack >= esperado),
+                    "status": status,
+                    "tempos": {
+                        # papel: do inicio do trabalho ate a primeira linha sair --
+                        #        e quando a etiqueta comeca a se mexer.
+                        # envio: as 639 linhas, no ritmo do row_delay.
+                        # espera: do fim do envio ate a impressora confirmar o fim.
+                        "papel": (t_papel or t_inicio) - t_inicio,
+                        "envio": t_envio_fim - (t_papel or t_inicio),
+                        "espera": t_fim - t_envio_fim,
+                        "total": t_fim - t_inicio,
+                    }}
+        finally:
+            # end_print() SEMPRE. Sem isto, qualquer excecao no meio do
+            # trabalho deixa a B1 com a pagina aberta: ela continua puxando
+            # papel em branco e so para no botao de desligar. Foi assim que
+            # uma etiqueta ruim virou uma impressora desgovernada.
+            if not encerrado:
+                try:
+                    self.end_print()
+                except Exception:
+                    pass
 
 
     @staticmethod
@@ -356,6 +393,18 @@ class PrinterClient:
             time.sleep(0.1)
         return resp
 
+    def _exigir(self, nome, reqcode, data, respoffset=1):
+        """Como _transceive, mas a resposta e obrigatoria."""
+        packet = self._transceive(reqcode, data, respoffset)
+        if packet is None:
+            raise PrinterSilent(
+                "sem resposta a %s (req 0x%02X) apos 6 tentativas" % (nome, reqcode))
+        return packet
+
+    def _comando(self, nome, reqcode, data, respoffset=1):
+        """Comando de controle: devolve o ack da impressora como bool."""
+        return bool(self._exigir(nome, reqcode, data, respoffset).data[0])
+
     def get_info(self, key):
         if packet := self._transceive(RequestCodeEnum.GET_INFO, bytes((key,)), key):
             match key:
@@ -371,7 +420,7 @@ class PrinterClient:
             return None
 
     def get_rfid(self):
-        packet = self._transceive(RequestCodeEnum.GET_RFID, b"\x01")
+        packet = self._exigir("get_rfid", RequestCodeEnum.GET_RFID, b"\x01")
         data = packet.data
 
         if data[0] == 0:
@@ -389,7 +438,10 @@ class PrinterClient:
         serial = data[idx : idx + serial_len].decode()
 
         idx += serial_len
-        total_len, used_len, type_ = struct.unpack(">HHB", data[idx:])
+        # A B1 devolve mais bytes depois deste bloco (repete o uuid, entre
+        # outros). O niimprint fatiava ate o fim e o unpack estourava com
+        # "requires a buffer of 5 bytes". Le so os 5 que interessam.
+        total_len, used_len, type_ = struct.unpack(">HHB", data[idx:idx + 5])
         return {
             "uuid": uuid,
             "barcode": barcode,
@@ -400,7 +452,7 @@ class PrinterClient:
         }
 
     def heartbeat(self):
-        packet = self._transceive(RequestCodeEnum.HEARTBEAT, b"\x01")
+        packet = self._exigir("heartbeat", RequestCodeEnum.HEARTBEAT, b"\x01")
         closingstate = None
         powerlevel = None
         paperstate = None
@@ -436,46 +488,41 @@ class PrinterClient:
 
     def set_label_type(self, n):
         assert 1 <= n <= 6
-        packet = self._transceive(RequestCodeEnum.SET_LABEL_TYPE, bytes((n,)), 16)
-        return bool(packet.data[0])
+        return self._comando("set_label_type", RequestCodeEnum.SET_LABEL_TYPE,
+                             bytes((n,)), 16)
 
     def set_label_density(self, n):
         assert 1 <= n <= 5  # B21 has 5 levels, not sure for D11
-        packet = self._transceive(RequestCodeEnum.SET_LABEL_DENSITY, bytes((n,)), 16)
-        return bool(packet.data[0])
+        return self._comando("set_label_density", RequestCodeEnum.SET_LABEL_DENSITY,
+                             bytes((n,)), 16)
 
     def start_print(self):
-        packet = self._transceive(RequestCodeEnum.START_PRINT, b"\x01")
-        return bool(packet.data[0])
+        return self._comando("start_print", RequestCodeEnum.START_PRINT, b"\x01")
 
     def end_print(self):
-        packet = self._transceive(RequestCodeEnum.END_PRINT, b"\x01")
-        return bool(packet.data[0])
+        return self._comando("end_print", RequestCodeEnum.END_PRINT, b"\x01")
 
     def start_page_print(self):
-        packet = self._transceive(RequestCodeEnum.START_PAGE_PRINT, b"\x01")
-        return bool(packet.data[0])
+        return self._comando("start_page_print", RequestCodeEnum.START_PAGE_PRINT, b"\x01")
 
     def end_page_print(self):
-        packet = self._transceive(RequestCodeEnum.END_PAGE_PRINT, b"\x01")
-        return bool(packet.data[0])
+        return self._comando("end_page_print", RequestCodeEnum.END_PAGE_PRINT, b"\x01")
 
     def allow_print_clear(self):
-        packet = self._transceive(RequestCodeEnum.ALLOW_PRINT_CLEAR, b"\x01", 16)
-        return bool(packet.data[0])
+        return self._comando("allow_print_clear", RequestCodeEnum.ALLOW_PRINT_CLEAR,
+                             b"\x01", 16)
 
     def set_dimension(self, w, h):
-        packet = self._transceive(
-            RequestCodeEnum.SET_DIMENSION, struct.pack(">HH", w, h)
-        )
-        return bool(packet.data[0])
+        return self._comando("set_dimension", RequestCodeEnum.SET_DIMENSION,
+                             struct.pack(">HH", w, h))
 
     def set_quantity(self, n):
-        packet = self._transceive(RequestCodeEnum.SET_QUANTITY, struct.pack(">H", n))
-        return bool(packet.data[0])
+        return self._comando("set_quantity", RequestCodeEnum.SET_QUANTITY,
+                             struct.pack(">H", n))
 
     def get_print_status(self):
-        packet = self._transceive(RequestCodeEnum.GET_PRINT_STATUS, b"\x01", 16)
+        packet = self._exigir("get_print_status", RequestCodeEnum.GET_PRINT_STATUS,
+                              b"\x01", 16)
         # A B1 devolve 10 bytes; o niimprint original desempacotava 4 (formato
         # da B21) e estourava. Os 4 primeiros sao os que interessam.
         page, progress1, progress2 = struct.unpack(">HBB", packet.data[:4])
