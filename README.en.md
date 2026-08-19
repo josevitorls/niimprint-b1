@@ -209,9 +209,10 @@ LABEL_MM = (50, 80)          # (roll width, label length) in mm
 
 ## 🤖 Adoption via AI (Claude Code skill)
 
-```bash
-mkdir -p .claude/skills/niimprint-b1 && cp skill/SKILL.md .claude/skills/niimprint-b1/
-# or globally: ~/.claude/skills/niimprint-b1/
+```powershell
+New-Item -ItemType Directory -Force .claude\skills\niimprint-b1
+Copy-Item skill\SKILL.md .claude\skills\niimprint-b1\
+# or globally: $HOME\.claude\skills\niimprint-b1\
 ```
 
 With [`skill/SKILL.md`](skill/SKILL.md) installed you can just ask — *"print a label for John at Acme, manager"* — and the agent handles the rest, following the rules that keep it from wasting labels: test the connection first, never guess the COM port, always check `completa`, treat `PrinterBusy` as "power-cycle it", never `pip install -r requirements.txt`.

@@ -5,10 +5,15 @@ Cartao de calibracao: uma etiqueta que revela area util, orientacao e escala.
     py calibra.py --print    # imprime
 """
 import sys
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from niimbot import PrinterClient, SerialTransport
+
+# preview/ nao vem no clone (esta no .gitignore), entao criamos na hora --
+# e ancorado no diretorio do script, para funcionar de qualquer cwd.
+SAIDA = Path(__file__).resolve().parent / "preview" / "CALIBRACAO.png"
 
 W, H = 384, 639          # largura da cabeca x comprimento de 80 mm @203dpi
 DPI = 203
@@ -44,7 +49,8 @@ for mm in range(10, 50, 10):
 d.text((W // 2, H - 25), "largura (mm)", font=f_sm, fill=0, anchor="mm")
 
 img = img.point(lambda p: 0 if p < 150 else 255, mode="L").convert("1")
-img.save("preview/CALIBRACAO.png")
+SAIDA.parent.mkdir(parents=True, exist_ok=True)
+img.save(SAIDA)
 print("preview/CALIBRACAO.png  (%dx%d px = %.1f x %.1f mm)"
       % (W, H, W / DPI * 25.4, H / DPI * 25.4))
 

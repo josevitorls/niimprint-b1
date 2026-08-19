@@ -42,6 +42,21 @@ Ele faz três coisas:
 2. 📋 **Enfileira as impressões** — quem opera devolve o controle na hora, e a B1 recebe um trabalho completo por vez, só começando o próximo quando a **impressora** confirma que o papel parou.
 3. 🔧 **Conserta o driver** — o `niimprint` original não funciona na B1 por USB. As [4 correções](#-as-4-correções-que-fazem-a-b1-funcionar) que fazem funcionar são a parte que custou caro para descobrir.
 
+```mermaid
+flowchart LR
+    A["📥 .json / .csv<br/>seus campos"] --> B["🧩 Templates<br/>--linha1 / --linha2"]
+    B --> C["🎨 render_label<br/>centraliza e ajusta a fonte"]
+    C --> D["📋 Fila<br/>devolve o controle na hora"]
+    D --> E["🖨️ Niimbot B1<br/>um trabalho por vez"]
+    E --> F["🏷️ Etiqueta na mão<br/>~6 s"]
+    E -.->|"a impressora confirma<br/>o fim de verdade"| D
+
+    style A fill:#FEF3C7,stroke:#F59E0B,color:#000
+    style D fill:#DBEAFE,stroke:#3B82F6,color:#000
+    style E fill:#FFE4D6,stroke:#FF6B35,color:#000
+    style F fill:#DCFCE7,stroke:#22C55E,color:#000
+```
+
 **Você só precisa entender [como o dado entra](#-como-o-dado-entra).** O resto é o mesmo para qualquer conteúdo.
 
 > 🌱 **De onde veio.** Nasceu de um balcão de check-in de evento: chega uma pessoa, o operador acha o nome, faz o check-in e comanda a impressão. Por isso os arquivos de exemplo são crachás. Mas nada aqui é específico de evento — a etiqueta são só duas linhas de texto, e quem decide o que entra em cada uma é você.
@@ -118,7 +133,7 @@ py etiquetas.py print --in mesas.csv --linha1 "{Mesa}" --linha2 ""
 | 🎟️ Crachá de evento | `{Nome}` | `{Empresa} - {Cargo}` |
 | 📦 Patrimônio | `{Patrimonio}` | `{Setor} - {Responsavel}` |
 | 🧪 Amostra de laboratório | `{Codigo}` | `{Paciente} · {Coleta}` |
-| 🪑 Lugar marcado | `{Mesa}` | `` (vazio) |
+| 🪑 Lugar marcado | `{Mesa}` | *(vazio)* |
 | 📚 Acervo | `{Tombo}` | `{Titulo}` |
 
 ### Campo vazio não deixa buraco
@@ -339,12 +354,14 @@ Passando pela fila, `tempos` ganha mais dois campos (`render` e `fila`, o tempo 
 
 O repositório traz uma **skill** em [`skill/SKILL.md`](skill/SKILL.md): com ela instalada, você pede em português — *"imprime uma etiqueta pro João da Acme, gerente"* — e o agente cuida do resto, seguindo as regras que evitam desperdiçar etiqueta e tempo.
 
-```bash
+```powershell
 # escopo do projeto (só neste repo):
-mkdir -p .claude/skills/niimprint-b1 && cp skill/SKILL.md .claude/skills/niimprint-b1/
+New-Item -ItemType Directory -Force .claude\skills\niimprint-b1
+Copy-Item skill\SKILL.md .claude\skills\niimprint-b1\
 
 # ou escopo global (todos os projetos):
-mkdir -p ~/.claude/skills/niimprint-b1 && cp skill/SKILL.md ~/.claude/skills/niimprint-b1/
+New-Item -ItemType Directory -Force $HOME\.claude\skills\niimprint-b1
+Copy-Item skill\SKILL.md $HOME\.claude\skills\niimprint-b1\
 ```
 
 A skill ensina o agente a testar a conexão antes de imprimir, a nunca chutar a porta COM, a conferir `completa` antes de dar qualquer coisa por impressa e a reconhecer `PrinterBusy` como "desligue e ligue", não como "tente de novo".
