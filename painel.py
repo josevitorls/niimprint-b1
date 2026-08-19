@@ -1,6 +1,6 @@
 """Painel local de cronometragem da impressao.
 
-Serve uma pagina em http://127.0.0.1:8765 com um botao por participante. O
+Serve uma pagina em http://127.0.0.1:8765 com um botao por registro. O
 cronometro dispara no clique e para quando a impressora confirma que terminou
 aquela etiqueta -- nao quando o comando foi aceito.
 
@@ -8,7 +8,7 @@ aquela etiqueta -- nao quando o comando foi aceito.
     py painel.py --port COM3 --http 8765 --rowdelay 0.005
 
 Para que serve: hoje so da para ver a etiqueta saindo, sem saber quando o
-procedimento comecou. O painel mostra os quatro pedacos do tempo separados,
+procedimento comecou. O painel mostra os pedacos do tempo separados,
 porque eles tem causas diferentes:
 
     fila     esperando a etiqueta anterior (0 quando a fila esta vazia)
