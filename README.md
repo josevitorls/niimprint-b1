@@ -200,6 +200,16 @@ Esta é a parte que custou caro para descobrir e que sustenta todo o resto. Cada
 
 Na B1 ele responde `True` na primeira tentativa, com a etiqueta **ainda saindo da cabeça**. O `while not end_print()` do driver original é decorativo. Confiar nele faz uma etiqueta atropelar a outra.
 
+<div align="center">
+
+<img src="docs/foto-bug-corte-desalinhado.jpg" width="300" alt="Duas etiquetas impressas em sequência com o corte no lugar errado: o nome da segunda pessoa começa ainda na primeira etiqueta">
+
+<sub>👉 O corte caiu no meio do nome: o <b>P</b> de “Patrícia” ficou na etiqueta da Luiza e a dela começa em “trícia”. O driver achou que a primeira tinha acabado e já mandou a segunda — <b>com o papel ainda andando</b>.</sub>
+
+</div>
+
+É exatamente por isso que `wait_until_done()` existe: quem sabe onde o papel parou é a impressora, que enxerga o gap com o sensor dela. Depois da correção, três impressões seguidas saem alinhadas, sem traço e sem corte fora de lugar.
+
 ### 2️⃣ `get_print_status()` estava quebrado — e tem uma armadilha
 
 A B1 devolve **10 bytes**; o upstream desempacotava 4 (formato da B21) e estourava `unpack requires a buffer of 4 bytes`. Corrigido fatiando `packet.data[:4]`. Ele devolve:
@@ -349,7 +359,7 @@ py calibra.py --print --delay=0.005
 | 🏢 empresa | `Empresa` · `Company` · `Organization` |
 | 💼 cargo | `Cargo` · `Title` · `Job Title` · `Role` |
 
-> 🧪 Os participantes em `participantes.json` e `exemplo_luma.csv` são **fictícios** — servem só para exercitar acentuação, nomes longos e quebra de linha.
+> 🧪 Os participantes em `participantes.json` e `exemplo_luma.csv` são **fictícios** — servem só para exercitar acentuação, nomes longos e quebra de linha. As fotos deste readme são de impressões reais feitas durante o desenvolvimento.
 
 ---
 
