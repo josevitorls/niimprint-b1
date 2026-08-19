@@ -660,7 +660,7 @@ writeFileSync('convidados.json', JSON.stringify(guests.map(extractBadgeFields), 
 ```
 
 ```bash
-py etiquetas.py print --in convidados.json --linha1 "{name}" --linha2 "{company} - {title}"
+py etiquetas.py print --in convidados.json --linha1 "{name}" --linha2 "{company} - {jobTitle}"
 ```
 
 ---

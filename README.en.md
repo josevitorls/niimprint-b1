@@ -245,7 +245,7 @@ Over USB the B1 shows up as a **serial port**, and `niimprint` speaks the same N
 They are **independent** — this project knows nothing about Lu.ma. To bridge them, dump the guest list to a `.json` (`guests.map(extractBadgeFields)`) and point the CLI at it:
 
 ```bash
-py etiquetas.py print --in guests.json --linha1 "{name}" --linha2 "{company} - {title}"
+py etiquetas.py print --in guests.json --linha1 "{name}" --linha2 "{company} - {jobTitle}"
 ```
 
 ---
