@@ -31,7 +31,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from etiquetas import load_people
+from etiquetas import LINHA1_PADRAO, LINHA2_PADRAO, formatar, load_registros
 
 PAGINA = """<!doctype html>
 <meta charset="utf-8">
@@ -158,14 +158,14 @@ function pintar(d) {
   }
 
   const ps = document.getElementById("pessoas");
-  if (ps.childElementCount !== d.participantes.length) {
+  if (ps.childElementCount !== d.itens.length) {
     ps.innerHTML = "";
-    d.participantes.forEach((p, i) => {
+    d.itens.forEach((p, i) => {
       const b = document.createElement("button");
       b.className = "pessoa";
       b.innerHTML = "<b></b><span></span>";
-      b.querySelector("b").textContent = p.Nome;
-      b.querySelector("span").textContent = p.Empresa + " - " + p.Cargo;
+      b.querySelector("b").textContent = p.linha1;
+      b.querySelector("span").textContent = p.linha2;
       b.onclick = () => acao("/imprimir", {i});
       ps.appendChild(b);
     });
@@ -184,7 +184,7 @@ function pintar(d) {
     // "erro": ela diz o que fazer.
     else fim = '<span class="correndo" data-t="' + j.decorrido + '">' + s(j.decorrido) + "</span>";
     tr.innerHTML =
-      "<td>" + j.nome + (j.estado === "fila" ? ' <span class="alvo">na fila</span>' : "") + "</td>" +
+      "<td>" + j.rotulo + (j.estado === "fila" ? ' <span class="alvo">na fila</span>' : "") + "</td>" +
       '<td class="n">' + s(j.fila) + "</td>" +
       '<td class="n">' + s(j.render) + "</td>" +
       "<td>" + s(j.ate_papel) + "</td>" +
@@ -230,8 +230,12 @@ poll(); tique();
 class Painel:
     """Guarda o estado que a pagina mostra. Um registro por clique."""
 
-    def __init__(self, participantes, porta, row_delay):
-        self.participantes = participantes
+    def __init__(self, registros, porta, row_delay,
+                 linha1=LINHA1_PADRAO, linha2=LINHA2_PADRAO):
+        # O painel so precisa das duas linhas ja prontas: quem decide o que entra
+        # em cada uma sao os templates, os mesmos do etiquetas.py.
+        self.itens = [{"linha1": formatar(linha1, r), "linha2": formatar(linha2, r)}
+                      for r in registros]
         self.row_delay = row_delay
         self.jobs = []
         self.erro = None
@@ -256,17 +260,17 @@ class Painel:
                          % (self._porta, e))
 
     def clicar(self, indice):
-        p = self.participantes[indice]
+        it = self.itens[indice]
         with self._trava:
-            job = {"id": len(self.jobs), "nome": p["Nome"], "estado": "fila",
+            job = {"id": len(self.jobs), "rotulo": it["linha1"], "estado": "fila",
                    "t_click": time.monotonic(), "t_fim": None, "tempos": None,
                    "completa": None, "msg": None}
             self.jobs.append(job)
         if self.fila is None:
             job["estado"] = "erro"
             return
-        self.fila.imprimir(p["Nome"], p["Empresa"], p["Cargo"], ref=job["id"])
-        print("[painel] clique -> %s" % p["Nome"])
+        self.fila.imprimir(it["linha1"], it["linha2"], ref=job["id"])
+        print("[painel] clique -> %s" % it["linha1"])
 
     def _achar(self, pedido):
         ref = pedido.get("ref")
@@ -331,14 +335,14 @@ class Painel:
                 primeiro = j["t_click"] if primeiro is None else min(primeiro, j["t_click"])
                 ultimo = j["t_fim"] if ultimo is None else max(ultimo, j["t_fim"])
             saida.append({
-                "nome": j["nome"], "estado": j["estado"],
+                "rotulo": j["rotulo"], "estado": j["estado"],
                 "fila": t.get("fila"), "render": t.get("render"),
                 "ate_papel": ate_papel, "envio": t.get("envio"),
                 "espera": t.get("espera"), "total": total,
                 "decorrido": agora - j["t_click"], "msg": j.get("msg"),
             })
         return {
-            "participantes": self.participantes,
+            "itens": self.itens,
             "jobs": saida,
             "prontas": prontas,
             "media": (soma / prontas) if prontas else None,
@@ -382,7 +386,7 @@ def fazer_handler(painel):
                 corpo = {}
             if self.path == "/imprimir":
                 if corpo.get("todos"):
-                    for i in range(len(painel.participantes)):
+                    for i in range(len(painel.itens)):
                         painel.clicar(i)
                 else:
                     painel.clicar(int(corpo["i"]))
@@ -402,12 +406,15 @@ def fazer_handler(painel):
 def main():
     ap = argparse.ArgumentParser(description="Painel local de cronometragem")
     ap.add_argument("--in", dest="entrada", default="participantes.json")
+    ap.add_argument("--linha1", default=LINHA1_PADRAO, help="template da linha de destaque")
+    ap.add_argument("--linha2", default=LINHA2_PADRAO, help="template da linha de apoio")
     ap.add_argument("--port", default="COM3", help="porta serial da impressora")
     ap.add_argument("--http", type=int, default=8765, help="porta da pagina")
     ap.add_argument("--rowdelay", type=float, default=0.005)
     args = ap.parse_args()
 
-    painel = Painel(load_people(args.entrada), args.port, args.rowdelay)
+    painel = Painel(load_registros(args.entrada), args.port, args.rowdelay,
+                    args.linha1, args.linha2)
     if painel.erro:
         print("[painel] " + painel.erro)
 

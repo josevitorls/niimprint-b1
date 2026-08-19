@@ -1,14 +1,17 @@
 """Fila de impressao: recebe pedidos na hora e imprime um de cada vez.
 
-O check-in e sob demanda, uma pessoa por vez. Mas nos primeiros minutos do
-evento a pessoa na porta e mais rapida que a impressora. A fila absorve isso:
-quem comanda a impressao devolve o controle na hora, e uma unica thread manda
-para a B1 um trabalho completo por vez, esperando cada um terminar de verdade.
+Serve para qualquer aplicacao que peca etiquetas sob demanda -- um posto de
+check-in, um balcao de retirada, uma bancada de etiquetagem. O padrao e sempre
+o mesmo: quem opera e mais rapido que a impressora em rajadas curtas. A fila
+absorve isso: quem comanda a impressao devolve o controle na hora, e uma unica
+thread manda para a B1 um trabalho completo por vez, esperando cada um terminar
+de verdade.
 
     from fila import FilaImpressao
 
     fila = FilaImpressao(porta="COM3")     # abre a serial uma vez so
-    fila.imprimir("Jose Vitor Lopes", "Lopes Advogados", "Socio")
+    fila.imprimir("Jose Vitor Lopes", "Lopes Advogados - Socio")
+    fila.imprimir("PAT-004821", "TI - Notebook Dell 5420")
     ...
     fila.encerrar()                        # espera o que falta e fecha
 
@@ -49,18 +52,31 @@ class FilaImpressao:
         self._worker = threading.Thread(target=self._rodar, daemon=True)
         self._worker.start()
 
-    def imprimir(self, nome, empresa, cargo, ref=None):
-        """Enfileira uma etiqueta e devolve o controle na hora.
+    def imprimir(self, linha1, linha2="", ref=None, **extras):
+        """Enfileira uma etiqueta de duas linhas e devolve o controle na hora.
 
-        ref e um identificador opaco seu (o id do check-in, por exemplo). Ele
-        volta em pedido["ref"] nos callbacks, para voce casar a etiqueta com o
-        registro no seu sistema sem depender do nome."""
-        pedido = {"Nome": nome, "Empresa": empresa, "Cargo": cargo, "ref": ref}
+        linha1 sai em destaque, linha2 embaixo (pode ser ""). Devolve o dict do
+        pedido, que reaparece nos callbacks.
+
+        ref e um identificador opaco seu (o id do check-in, o codigo do item).
+        Ele volta em pedido["ref"] nos callbacks, para voce casar a etiqueta com
+        o registro no seu sistema sem depender do texto impresso. Qualquer outro
+        campo passado em extras tambem viaja junto no pedido."""
+        pedido = {"linha1": linha1, "linha2": linha2, "ref": ref}
+        pedido.update(extras)
         # O instante do enfileiramento anda ao lado do pedido, nao dentro dele:
         # o dict do pedido e a interface com o sistema de quem chama e nao deve
         # ganhar campos que sao instrumentacao nossa.
         self._pedidos.put((pedido, time.monotonic()))
         return pedido
+
+    def imprimir_cracha(self, nome, empresa, cargo, ref=None):
+        """Atalho para cracha de evento: linha2 = "Empresa - Cargo".
+
+        Os tres campos originais tambem viajam no pedido (pedido["Nome"] etc.),
+        para os callbacks poderem usa-los."""
+        return self.imprimir(nome, " - ".join(p for p in (empresa, cargo) if p),
+                             ref=ref, Nome=nome, Empresa=empresa, Cargo=cargo)
 
     @property
     def aguardando(self):
@@ -96,8 +112,8 @@ class FilaImpressao:
             resultado, erro = None, None
             try:
                 t0 = time.monotonic()
-                img = render_label(pedido["Nome"], pedido["Empresa"],
-                                   pedido["Cargo"], self.layout)
+                img = render_label(pedido["linha1"], pedido.get("linha2", ""),
+                                   self.layout)
                 t_render = time.monotonic() - t0
                 resultado = self._impressora.print_image(
                     to_print(img, self.layout, self.rotate180),
@@ -112,10 +128,10 @@ class FilaImpressao:
             # Uma etiqueta truncada nao pode sumir calada. No CLI isto vira
             # "FALHOU"; aqui era engolido se o callback nao olhasse o resultado.
             if erro is not None:
-                print("[fila] ERRO em %s: %r" % (pedido["Nome"], erro))
+                print("[fila] ERRO em %s: %r" % (pedido["linha1"], erro))
             elif not resultado["completa"]:
                 print("[fila] INCOMPLETA: %s (linha %s de %d) -- reimprima"
-                      % (pedido["Nome"], resultado["linhas_ok"],
+                      % (pedido["linha1"], resultado["linhas_ok"],
                          resultado["esperado"]))
 
             if self.ao_terminar:
